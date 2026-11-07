@@ -2,11 +2,13 @@ import argparse
 import shlex
 from pathlib import Path
 
-from gem5.components.boards.simple_board import SimpleBoard
-from gem5.components.cachehierarchies.classic.private_l1_private_l2_cache_hierarchy import (
-    PrivateL1PrivateL2CacheHierarchy,
+import m5.stats
+
+from assignment_cache import (
+    AssignmentCacheHierarchy, assignment_memory, configure_o3,
 )
-from gem5.components.memory.single_channel import SingleChannelDDR3_1600
+
+from gem5.components.boards.simple_board import SimpleBoard
 from gem5.components.processors.cpu_types import (
     CPUTypes,
     get_mem_mode,
@@ -49,6 +51,11 @@ parser.add_argument(
     required=True,
     help="Detailed (O3) instructions",
 )
+parser.add_argument(
+    "--checkpoint-after-fastforward",
+    type=Path,
+    help="Save a checkpoint after KVM and Atomic fast-forward, then exit",
+)
 
 # Workload
 parser.add_argument("--binary", type=str, required=True, help="Path to binary")
@@ -73,7 +80,7 @@ parser.add_argument(
     help="Clk freq of the board. Same as CPU freq in this case.",
 )
 parser.add_argument(
-    "--mem-size", type=str, default="8GiB", help="Size of DRAM"
+    "--mem-size", type=str, default="4GiB", help="Size of DRAM"
 )
 
 # Cache hierarchy
@@ -81,15 +88,15 @@ parser.add_argument("--l1i-size", type=str, default="32KiB")
 parser.add_argument("--l1d-size", type=str, default="32KiB")
 parser.add_argument("--l2-size", type=str, default="256KiB")
 # Course cache extensions (defaults preserve the original hierarchy).
-parser.add_argument("--l1i-assoc", type=int, default=8)
-parser.add_argument("--l1i-tag-latency", type=int, default=1)
-parser.add_argument("--l1i-data-latency", type=int, default=1)
+parser.add_argument("--l1i-assoc", type=int, default=4)
+parser.add_argument("--l1i-tag-latency", type=int, default=4)
+parser.add_argument("--l1i-data-latency", type=int, default=4)
 parser.add_argument("--l1i-response-latency", type=int, default=1)
-parser.add_argument("--l1d-assoc", type=int, default=8)
-parser.add_argument("--l1d-tag-latency", type=int, default=1)
-parser.add_argument("--l1d-data-latency", type=int, default=1)
+parser.add_argument("--l1d-assoc", type=int, default=4)
+parser.add_argument("--l1d-tag-latency", type=int, default=4)
+parser.add_argument("--l1d-data-latency", type=int, default=4)
 parser.add_argument("--l1d-response-latency", type=int, default=1)
-parser.add_argument("--l2-assoc", type=int, default=4)
+parser.add_argument("--l2-assoc", type=int, default=8)
 parser.add_argument("--l2-tag-latency", type=int, default=10)
 parser.add_argument("--l2-data-latency", type=int, default=10)
 parser.add_argument("--l2-response-latency", type=int, default=1)
@@ -109,10 +116,12 @@ if (
     parser.error(
         "Fast-forward must be nonnegative; warmup/detail must be positive"
     )
-if args.num_cores < 1:
-    parser.error("--num-cores must be positive")
+if args.num_cores != 1:
+    parser.error("Assignment 1 requires exactly one core")
 if args.input_file and args.inputs:
     parser.error("Use either --inputs or --input-file")
+if args.checkpoint_after_fastforward and args.fastforward_insts == 0:
+    parser.error("Checkpoint creation requires positive fast-forward instructions")
 # --------------------------------------------------------------------------------------------------------------------
 # Color codes for terminal output
 BOLD_YELLOW = "\033[1;93m"
@@ -124,7 +133,7 @@ RESET = "\033[0m"
 
 # === Memory Heirarchy ===
 # --------------------------------------------------
-cache_hierarchy = PrivateL1PrivateL2CacheHierarchy(
+cache_hierarchy = AssignmentCacheHierarchy(
     l1i_size=args.l1i_size,
     l1d_size=args.l1d_size,
     l2_size=args.l2_size,
@@ -141,7 +150,7 @@ cache_hierarchy = PrivateL1PrivateL2CacheHierarchy(
     l2_data_latency=args.l2_data_latency,
     l2_response_latency=args.l2_response_latency,
 )
-memory = SingleChannelDDR3_1600(size=args.mem_size)
+memory = assignment_memory(size=args.mem_size)
 # --------------------------------------------------
 
 # Processor setup
@@ -169,6 +178,8 @@ switchable_cores = {
         for i in range(args.num_cores)
     ],
 }
+for core in switchable_cores["o3"]:
+    configure_o3(core)
 
 if args.fastforward_insts > 0:
     starting_cores = "kvm"
@@ -250,8 +261,9 @@ def exit_event_handler():  # This function must be defined before defining the s
                 f"{BOLD_RED}Warning: Not enough instructions left for atomic fastforward phase."
             )
             print("Increase atomic_fastforward_insts as needed.")
-            print(f"Exiting simulation.{RESET}")
-            yield True  # exit simulation
+            raise RuntimeError(
+                "KVM fast-forward overshot the Atomic correction phase"
+            )
         adjusted_atomic_fastforward_limit = (
             atomic_fastforward_insts - overshoot_insts
         )
@@ -271,6 +283,11 @@ def exit_event_handler():  # This function must be defined before defining the s
         print(
             f"Overshoot after stage-2 fast-forward = {overshoot_insts} instructions{RESET}"
         )
+        if args.checkpoint_after_fastforward:
+            simulator.save_checkpoint(args.checkpoint_after_fastforward)
+            print(f"Saved checkpoint: {args.checkpoint_after_fastforward}")
+            yield True
+            return
         processor.switch_to_processor("timing")
         core_type = processor.get_cores()[0].get_type()
         print(f"{BOLD_BLUE}Switched to {core_type} (warmup){RESET}")
@@ -282,8 +299,9 @@ def exit_event_handler():  # This function must be defined before defining the s
             print(
                 "Decrease --fastforward-insts and/or atomic_fast_forward_insts as needed."
             )
-            print(f"Exiting simulation.{RESET}")
-            yield True  # exit simulation
+            raise RuntimeError(
+                "Fast-forward overshot the warmup instruction budget"
+            )
         adjusted_warmup_limit = args.warmup_insts - overshoot_insts
         print(
             f"{BOLD_YELLOW}Adjusted warmup limit = {adjusted_warmup_limit} instructions{RESET}"
@@ -305,10 +323,12 @@ def exit_event_handler():  # This function must be defined before defining the s
             print(
                 f"{BOLD_RED}Warning: Not enough instructions left for detailed phase."
             )
-            print("Decrease ----warmup-insts as needed.")
-            print(f"Exiting simulation.{RESET}")
-            yield True  # exit simulation
+            print("Adjust --warmup-insts or the fast-forward target.")
+            raise RuntimeError(
+                "Warmup overshot the detailed interval boundary"
+            )
     processor.switch_to_processor("o3")
+    m5.stats.reset()
     core_type = processor.get_cores()[0].get_type()
     print(f"{BOLD_BLUE}Switched to {core_type} (detailed){RESET}")
     board.set_mem_mode(get_mem_mode(core_type))

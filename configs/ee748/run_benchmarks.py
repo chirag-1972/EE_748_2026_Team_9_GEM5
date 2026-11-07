@@ -13,6 +13,8 @@ from datetime import (
 )
 from pathlib import Path
 
+from benchmark_specs import SPECS
+
 REPO = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("benchmarks", nargs="*")
@@ -28,25 +30,18 @@ parser.add_argument("--warmup-insts", type=int, default=200_000_000)
 parser.add_argument("--detailed-insts", type=int, default=50_000_000)
 parser.add_argument("--dry-run", action="store_true")
 args = parser.parse_args()
+if args.mode == "kvm" and not args.dry_run:
+    parser.error(
+        "Direct KVM switching misses instruction boundaries in this gem5 "
+        "version; use run-ee748-baseline.sh for checkpointed KVM execution"
+    )
 if min(args.jobs, args.warmup_insts, args.detailed_insts) < 1:
     parser.error(
         "jobs, warmup and detailed instruction counts must be positive"
     )
 root = args.benchmark_root.resolve()
 output = args.output_root.resolve()
-# Replace each None with the instruction count derived from its SimPoints.
-# None deliberately prevents launching with an unanswered assignment value.
-specs = {
-    "astar": ("473.astar", "astar", None),
-    "bzip2": ("401.bzip2", "bzip2", None),
-    "hmmer": ("456.hmmer", "hmmer", None),
-    "lbm": ("470.lbm", "lbm", None),
-    "mcf": ("429.mcf", "mcf", None),
-    "milc": ("433.milc", "milc", None),
-    "namd": ("444.namd", "namd", None),
-    "sphinx": ("482.sphinx3", "sphinx_livepretend", None),
-    "gamess": ("416.gamess", "gamess", None),
-}
+specs = SPECS
 selected = args.benchmarks or list(specs)
 if len(set(selected)) != len(selected):
     parser.error("Do not repeat benchmark names in a batch")

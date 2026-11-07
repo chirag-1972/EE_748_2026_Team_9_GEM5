@@ -2,11 +2,13 @@ import argparse
 import shlex
 from pathlib import Path
 
-from gem5.components.boards.simple_board import SimpleBoard
-from gem5.components.cachehierarchies.classic.private_l1_private_l2_cache_hierarchy import (
-    PrivateL1PrivateL2CacheHierarchy,
+import m5.stats
+
+from assignment_cache import (
+    AssignmentCacheHierarchy, assignment_memory, configure_o3,
 )
-from gem5.components.memory.single_channel import SingleChannelDDR3_1600
+
+from gem5.components.boards.simple_board import SimpleBoard
 from gem5.components.processors.cpu_types import (
     CPUTypes,
     get_mem_mode,
@@ -49,6 +51,16 @@ parser.add_argument(
     required=True,
     help="Detailed (O3) instructions",
 )
+parser.add_argument(
+    "--checkpoint-after-fastforward",
+    type=Path,
+    help="Save a checkpoint at the end of Atomic fast-forward and exit",
+)
+parser.add_argument(
+    "--restore-checkpoint",
+    type=Path,
+    help="Restore an earlier checkpoint before running",
+)
 
 # Workload
 parser.add_argument("--binary", type=str, required=True, help="Path to binary")
@@ -73,7 +85,7 @@ parser.add_argument(
     help="Clk freq of the board. Same as CPU freq in this case.",
 )
 parser.add_argument(
-    "--mem-size", type=str, default="8GiB", help="Size of DRAM"
+    "--mem-size", type=str, default="4GiB", help="Size of DRAM"
 )
 
 # Cache hierarchy
@@ -81,15 +93,15 @@ parser.add_argument("--l1i-size", type=str, default="32KiB")
 parser.add_argument("--l1d-size", type=str, default="32KiB")
 parser.add_argument("--l2-size", type=str, default="256KiB")
 # Course cache extensions (defaults preserve the original hierarchy).
-parser.add_argument("--l1i-assoc", type=int, default=8)
-parser.add_argument("--l1i-tag-latency", type=int, default=1)
-parser.add_argument("--l1i-data-latency", type=int, default=1)
+parser.add_argument("--l1i-assoc", type=int, default=4)
+parser.add_argument("--l1i-tag-latency", type=int, default=4)
+parser.add_argument("--l1i-data-latency", type=int, default=4)
 parser.add_argument("--l1i-response-latency", type=int, default=1)
-parser.add_argument("--l1d-assoc", type=int, default=8)
-parser.add_argument("--l1d-tag-latency", type=int, default=1)
-parser.add_argument("--l1d-data-latency", type=int, default=1)
+parser.add_argument("--l1d-assoc", type=int, default=4)
+parser.add_argument("--l1d-tag-latency", type=int, default=4)
+parser.add_argument("--l1d-data-latency", type=int, default=4)
 parser.add_argument("--l1d-response-latency", type=int, default=1)
-parser.add_argument("--l2-assoc", type=int, default=4)
+parser.add_argument("--l2-assoc", type=int, default=8)
 parser.add_argument("--l2-tag-latency", type=int, default=10)
 parser.add_argument("--l2-data-latency", type=int, default=10)
 parser.add_argument("--l2-response-latency", type=int, default=1)
@@ -100,15 +112,18 @@ parser.add_argument(
 args = parser.parse_args()
 if (
     args.fastforward_insts < 0
-    or min(args.warmup_insts, args.detailed_insts) <= 0
+    or args.warmup_insts < 0
+    or args.detailed_insts <= 0
 ):
     parser.error(
         "Fast-forward must be nonnegative; warmup/detail must be positive"
     )
-if args.num_cores < 1:
-    parser.error("--num-cores must be positive")
+if args.num_cores != 1:
+    parser.error("Assignment 1 requires exactly one core")
 if args.input_file and args.inputs:
     parser.error("Use either --inputs or --input-file")
+if args.checkpoint_after_fastforward and args.fastforward_insts == 0:
+    parser.error("Checkpoint creation requires positive fast-forward instructions")
 # --------------------------------------------------------------------------------------------------------------------
 # Color codes for terminal output
 BOLD_YELLOW = "\033[1;93m"
@@ -120,7 +135,7 @@ RESET = "\033[0m"
 
 # === Memory Heirarchy ===
 # --------------------------------------------------
-cache_hierarchy = PrivateL1PrivateL2CacheHierarchy(
+cache_hierarchy = AssignmentCacheHierarchy(
     l1i_size=args.l1i_size,
     l1d_size=args.l1d_size,
     l2_size=args.l2_size,
@@ -137,7 +152,7 @@ cache_hierarchy = PrivateL1PrivateL2CacheHierarchy(
     l2_data_latency=args.l2_data_latency,
     l2_response_latency=args.l2_response_latency,
 )
-memory = SingleChannelDDR3_1600(size=args.mem_size)
+memory = assignment_memory(size=args.mem_size)
 # --------------------------------------------------
 
 # Processor setup
@@ -160,10 +175,15 @@ switchable_cores = {
         for i in range(args.num_cores)
     ],
 }
+for core in switchable_cores["o3"]:
+    configure_o3(core)
 if args.fastforward_insts > 0:
     starting_cores = "atomic"
-else:
+elif args.warmup_insts > 0:
     starting_cores = "timing"
+else:
+    starting_cores = "o3"
+
 processor = SwitchableProcessor(
     switchable_cores=switchable_cores,
     starting_cores=starting_cores,
@@ -205,6 +225,7 @@ board.set_se_binary_workload(
         if args.stdin_file
         else None
     ),
+    checkpoint=args.restore_checkpoint,
 )
 # -----------------------------------------------------------------
 
@@ -221,12 +242,23 @@ def exit_event_handler():  # This function must be defined before defining the s
       3) O3 (detailed)         -> stop
     """
     # 1) Fast-forward completed (ATOMIC)
-    core_type = processor.get_cores()[0].get_type()
+        core_type = processor.get_cores()[0].get_type()
+    if args.fastforward_insts == 0 and args.warmup_insts == 0:
+        actual_sim_insts = simulator.get_instruction_count()
+        print(f"Simulated {actual_sim_insts} instructions on {core_type} (detailed).")
+        print("Success: detailed simulation completed!")
+        yield True
+        return
     if args.fastforward_insts > 0:
         actual_sim_insts = simulator.get_instruction_count()
         print(
             f"{BOLD_YELLOW}Simulated {actual_sim_insts} instructions on {core_type} (fast-forward).{RESET}"
         )
+        if args.checkpoint_after_fastforward:
+            simulator.save_checkpoint(args.checkpoint_after_fastforward)
+            print(f"Saved checkpoint: {args.checkpoint_after_fastforward}")
+            yield True
+            return
         processor.switch_to_processor("timing")
         core_type = processor.get_cores()[0].get_type()
         print(f"{BOLD_BLUE}Switched to {core_type} (warmup){RESET}")
@@ -240,6 +272,7 @@ def exit_event_handler():  # This function must be defined before defining the s
         f"{BOLD_YELLOW}Simulated {actual_sim_insts} instructions on {core_type} (warmup).{RESET}"
     )
     processor.switch_to_processor("o3")
+    m5.stats.reset()
     core_type = processor.get_cores()[0].get_type()
     print(f"{BOLD_BLUE}Switched to {core_type} (detailed){RESET}")
     board.set_mem_mode(get_mem_mode(core_type))
@@ -275,8 +308,10 @@ core_type = processor.get_cores()[0].get_type()
 board.set_mem_mode(get_mem_mode(core_type))
 if args.fastforward_insts > 0:
     simulator.schedule_max_insts(args.fastforward_insts)
-else:
+elif args.warmup_insts > 0:
     simulator.schedule_max_insts(args.warmup_insts)
+else:
+    simulator.schedule_max_insts(args.detailed_insts)
 print(f"{BOLD_BLUE}Starting the simulation!{RESET}")
 simulator.run()
 # --------------------------------------------------

@@ -11,6 +11,6 @@ SPECS = {
     # Intervals 8 and 7 tie; use the first listed (8) for every policy.
     "milc": ("433.milc", "milc", 7_800_000_000),
     "namd": ("444.namd", "namd", 1_645_800_000_000),
-    "sphinx": ("482.sphinx3", "sphinx_livepretend", ),
+    "sphinx": ("482.sphinx3", "sphinx_livepretend", 0),
     "gamess": ("416.gamess", "gamess", 433_800_000_000),
 }

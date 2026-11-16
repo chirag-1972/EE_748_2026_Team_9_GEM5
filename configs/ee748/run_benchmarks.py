@@ -28,6 +28,7 @@ parser.add_argument(
 )
 parser.add_argument("--warmup-insts", type=int, default=200_000_000)
 parser.add_argument("--detailed-insts", type=int, default=50_000_000)
+parser.add_argument("--llc-policy", choices=["lru", "lru9"], default="lru")
 parser.add_argument("--dry-run", action="store_true")
 args = parser.parse_args()
 if args.mode == "kvm" and not args.dry_run:
@@ -63,6 +64,9 @@ for name in selected:
 
 def run(name):
     folder, executable, fastforward = specs[name]
+    warmup_insts = (
+        0 if name == "sphinx" and fastforward == 0 else args.warmup_insts
+    )
     bench = root / folder
     ref = bench / "data/ref/input"
     out = output / name
@@ -116,9 +120,11 @@ def run(name):
         "--fastforward-insts",
         str(fastforward),
         "--warmup-insts",
-        str(args.warmup_insts),
+        str(warmup_insts),
         "--detailed-insts",
         str(args.detailed_insts),
+        "--llc-policy",
+        args.llc_policy,
         "--binary",
         str(binary),
     ]

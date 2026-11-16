@@ -2,8 +2,14 @@
 """Classic three-level cache hierarchy for EE748 Assignment 1."""
 
 from m5.objects import (
-    BranchPredictor, IQUnit, L2XBar, LRURP, ReturnAddrStack, SimpleBTB,
+    LRU9RP,
+    LRURP,
     TAGE_SC_L_64KB,
+    BranchPredictor,
+    IQUnit,
+    L2XBar,
+    ReturnAddrStack,
+    SimpleBTB,
 )
 
 from gem5.components.cachehierarchies.classic.caches.l1dcache import L1DCache
@@ -48,6 +54,12 @@ def configure_o3(core):
 class AssignmentCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
     """One core's L1I/L1D -> L2 -> shared LLC -> DDR3 memory."""
 
+    def __init__(self, *args, llc_policy="lru", **kwargs):
+        super().__init__(*args, **kwargs)
+        if llc_policy not in {"lru", "lru9"}:
+            raise ValueError(f"Unsupported LLC policy: {llc_policy}")
+        self._llc_policy = llc_policy
+
     def incorporate_cache(self, board):
         board.connect_system_port(self.membus.cpu_side_ports)
         for _, port in board.get_mem_ports():
@@ -56,11 +68,17 @@ class AssignmentCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
         llc = self.add_root_child(
             "llc",
             L2Cache(
-                size="1MiB", assoc=16, tag_latency=20,
-                data_latency=20, response_latency=1, mshrs=64,
+                size="1MiB",
+                assoc=16,
+                tag_latency=20,
+                data_latency=20,
+                response_latency=1,
+                mshrs=64,
             ),
         )
-        llc.cache.replacement_policy = LRURP()
+        llc.cache.replacement_policy = (
+            LRU9RP() if self._llc_policy == "lru9" else LRURP()
+        )
         llc.cache.mem_side = self.membus.cpu_side_ports
         self.l3buses = [L2XBar()]
         self.l3buses[0].mem_side_ports = llc.cache.cpu_side
@@ -73,7 +91,8 @@ class AssignmentCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
             l2_node = self.add_root_child(
                 f"l2-cache-{i}",
                 L2Cache(
-                    size=self._l2_size, assoc=self._l2_assoc,
+                    size=self._l2_size,
+                    assoc=self._l2_assoc,
                     tag_latency=self._l2_tag_latency,
                     data_latency=self._l2_data_latency,
                     response_latency=self._l2_response_latency,
@@ -83,7 +102,8 @@ class AssignmentCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
             l1i_node = l2_node.add_child(
                 f"l1i-cache-{i}",
                 L1ICache(
-                    size=self._l1i_size, assoc=self._l1i_assoc,
+                    size=self._l1i_size,
+                    assoc=self._l1i_assoc,
                     tag_latency=self._l1i_tag_latency,
                     data_latency=self._l1i_data_latency,
                     response_latency=self._l1i_response_latency,
@@ -93,7 +113,8 @@ class AssignmentCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
             l1d_node = l2_node.add_child(
                 f"l1d-cache-{i}",
                 L1DCache(
-                    size=self._l1d_size, assoc=self._l1d_assoc,
+                    size=self._l1d_size,
+                    assoc=self._l1d_assoc,
                     tag_latency=self._l1d_tag_latency,
                     data_latency=self._l1d_data_latency,
                     response_latency=self._l1d_response_latency,

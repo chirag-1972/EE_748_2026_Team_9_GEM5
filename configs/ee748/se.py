@@ -2,11 +2,13 @@ import argparse
 import shlex
 from pathlib import Path
 
-import m5.stats
-
 from assignment_cache import (
-    AssignmentCacheHierarchy, assignment_memory, configure_o3,
+    AssignmentCacheHierarchy,
+    assignment_memory,
+    configure_o3,
 )
+
+import m5.stats
 
 from gem5.components.boards.simple_board import SimpleBoard
 from gem5.components.processors.cpu_types import (
@@ -105,6 +107,7 @@ parser.add_argument("--l2-assoc", type=int, default=8)
 parser.add_argument("--l2-tag-latency", type=int, default=10)
 parser.add_argument("--l2-data-latency", type=int, default=10)
 parser.add_argument("--l2-response-latency", type=int, default=1)
+parser.add_argument("--llc-policy", choices=["lru", "lru9"], default="lru")
 parser.add_argument("--stdin-file", help="File supplied to benchmark stdin")
 parser.add_argument(
     "--library-path", help="Library path for the simulated binary"
@@ -123,7 +126,9 @@ if args.num_cores != 1:
 if args.input_file and args.inputs:
     parser.error("Use either --inputs or --input-file")
 if args.checkpoint_after_fastforward and args.fastforward_insts == 0:
-    parser.error("Checkpoint creation requires positive fast-forward instructions")
+    parser.error(
+        "Checkpoint creation requires positive fast-forward instructions"
+    )
 # --------------------------------------------------------------------------------------------------------------------
 # Color codes for terminal output
 BOLD_YELLOW = "\033[1;93m"
@@ -151,6 +156,7 @@ cache_hierarchy = AssignmentCacheHierarchy(
     l2_tag_latency=args.l2_tag_latency,
     l2_data_latency=args.l2_data_latency,
     l2_response_latency=args.l2_response_latency,
+    llc_policy=args.llc_policy,
 )
 memory = assignment_memory(size=args.mem_size)
 # --------------------------------------------------
@@ -242,10 +248,12 @@ def exit_event_handler():  # This function must be defined before defining the s
       3) O3 (detailed)         -> stop
     """
     # 1) Fast-forward completed (ATOMIC)
-        core_type = processor.get_cores()[0].get_type()
+    core_type = processor.get_cores()[0].get_type()
     if args.fastforward_insts == 0 and args.warmup_insts == 0:
         actual_sim_insts = simulator.get_instruction_count()
-        print(f"Simulated {actual_sim_insts} instructions on {core_type} (detailed).")
+        print(
+            f"Simulated {actual_sim_insts} instructions on {core_type} (detailed)."
+        )
         print("Success: detailed simulation completed!")
         yield True
         return

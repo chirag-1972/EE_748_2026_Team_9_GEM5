@@ -37,7 +37,10 @@ def workload(name: str, directory: Path):
         inputs = [str(ref / "nph3.hmm"), str(ref / "swiss41")]
     elif name == "lbm":
         inputs = [
-            "3000", str(directory / "reference.dat"), "0", "0",
+            "3000",
+            str(directory / "reference.dat"),
+            "0",
+            "0",
             str(ref / "100_100_130_ldc.of"),
         ]
     elif name == "mcf":
@@ -47,8 +50,10 @@ def workload(name: str, directory: Path):
         stdin = ref / "su3imp.in"
     elif name == "namd":
         inputs = [
-            "--input", str(bench / "data/all/input/namd.input"),
-            "--iterations", "38",
+            "--input",
+            str(bench / "data/all/input/namd.input"),
+            "--iterations",
+            "38",
         ]
     elif name == "gamess":
         inputs = []
@@ -96,8 +101,12 @@ def run_gem5(command, cwd: Path, output: Path) -> int:
     print(shlex.join(command), flush=True)
     with (output / "run.log").open("w") as log:
         with subprocess.Popen(
-            command, cwd=cwd, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, bufsize=1,
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
         ) as process:
             assert process.stdout is not None
             for line in process.stdout:
@@ -144,9 +153,11 @@ def main() -> int:
     )
     parser.add_argument("workload", choices=sorted(SPECS))
     parser.add_argument(
-        "--output-root", type=Path,
+        "--output-root",
+        type=Path,
         default=WORKSPACE / "gem5_out/baseline_checkpointed",
     )
+    parser.add_argument("--llc-policy", choices=["lru", "lru9"], default="lru")
     args = parser.parse_args()
     name = args.workload
     target = SPECS[name][2]
@@ -162,9 +173,13 @@ def main() -> int:
         parser.error(f"Missing benchmark binary: {binary}")
     if stdin and not stdin.is_file():
         parser.error(f"Missing benchmark stdin: {stdin}")
-    if name == "gamess" and not (
-        WORKSPACE / "legacy-runtime/usr/lib/x86_64-linux-gnu/libgfortran.so.3"
-    ).is_file():
+    if (
+        name == "gamess"
+        and not (
+            WORKSPACE
+            / "legacy-runtime/usr/lib/x86_64-linux-gnu/libgfortran.so.3"
+        ).is_file()
+    ):
         parser.error("Missing GAMESS runtime; run its setup first")
     if args.stage == "plan":
         print(
@@ -176,9 +191,16 @@ def main() -> int:
     if args.stage == "convert":
         helper = REPO / "util/ee748/convert_kvm_checkpoint.py"
         return subprocess.run(
-            [sys.executable, str(helper), str(directory / "checkpoint_raw"),
-             str(directory / "save/stats.log"), str(directory / "checkpoint"),
-             "--target-fastforward", str(target)], check=False,
+            [
+                sys.executable,
+                str(helper),
+                str(directory / "checkpoint_raw"),
+                str(directory / "save/stats.log"),
+                str(directory / "checkpoint"),
+                "--target-fastforward",
+                str(target),
+            ],
+            check=False,
         ).returncode
     if args.stage == "verify":
         verify(name, directory)
@@ -195,11 +217,19 @@ def main() -> int:
                 "Raw checkpoint already exists; choose a new output root"
             )
         command = [
-            str(gem5), "-d", str(output), "--stats-file=stats.log",
+            str(gem5),
+            "-d",
+            str(output),
+            "--stats-file=stats.log",
             str(REPO / "configs/ee748/se_kvm.py"),
-            "--fastforward-insts", str(save_target),
-            "--warmup-insts", str(WARMUP),
-            "--detailed-insts", str(DETAIL),
+            "--fastforward-insts",
+            str(save_target),
+            "--warmup-insts",
+            str(WARMUP),
+            "--detailed-insts",
+            str(DETAIL),
+            "--llc-policy",
+            args.llc_policy,
             "--checkpoint-after-fastforward",
             str(directory / "checkpoint_raw"),
         ]
@@ -214,12 +244,21 @@ def main() -> int:
                 "Invalid remaining fast-forward instruction count"
             )
         command = [
-            str(gem5), "-d", str(output), "--stats-file=stats.log",
+            str(gem5),
+            "-d",
+            str(output),
+            "--stats-file=stats.log",
             str(REPO / "configs/ee748/se.py"),
-            "--fastforward-insts", str(remaining),
-            "--warmup-insts", str(WARMUP),
-            "--detailed-insts", str(DETAIL),
-            "--restore-checkpoint", str(directory / "checkpoint"),
+            "--fastforward-insts",
+            str(remaining),
+            "--warmup-insts",
+            str(WARMUP),
+            "--detailed-insts",
+            str(DETAIL),
+            "--llc-policy",
+            args.llc_policy,
+            "--restore-checkpoint",
+            str(directory / "checkpoint"),
         ]
     add_workload_args(command, name, binary, inputs, stdin, directory)
     return run_gem5(command, cwd, output)

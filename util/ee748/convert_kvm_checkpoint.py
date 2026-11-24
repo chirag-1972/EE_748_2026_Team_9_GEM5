@@ -56,9 +56,7 @@ def main() -> None:
 
     stats = args.save_stats.read_text()
     completed = one_counter(stats, "simInsts")
-    kvm = one_counter(
-        stats, "board.processor.kvm.core.commitStats0.numInsts"
-    )
+    kvm = one_counter(stats, "board.processor.kvm.core.commitStats0.numInsts")
     atomic = one_counter(
         stats, "board.processor.atomic.core.commitStats0.numInsts"
     )

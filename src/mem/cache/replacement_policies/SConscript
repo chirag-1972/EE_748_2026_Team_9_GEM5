@@ -26,11 +26,14 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from gem5.site_scons.gem5_scons.sources import with_tag
+
+
 Import('*')
 
 SimObject('ReplacementPolicies.py', sim_objects=[
     'BaseReplacementPolicy', 'DuelingRP', 'FIFORP', 'SecondChanceRP',
-    'LFURP', 'LRURP', 'LRU9RP', 'BIPRP', 'MRURP', 'RandomRP',
+    'LFURP', 'LRURP', 'LRU9RP', 'LRU9_Slow_RP', 'BIPRP', 'MRURP', 'RandomRP',
     'BRRIPRP', 'SHiPRP',
     'SHiPMemRP', 'SHiPPCRP', 'TreePLRURP', 'WeightedLRURP'])
 
@@ -41,6 +44,7 @@ Source('fifo_rp.cc')
 Source('lfu_rp.cc')
 Source('lru_rp.cc')
 Source('lru9_rp.cc')
+Source('lru9_slow_rp.cc')
 Source('mru_rp.cc')
 Source('random_rp.cc')
 Source('second_chance_rp.cc')
@@ -58,3 +62,5 @@ GTest('lru_rp.test', 'lru_rp.cc', 'lru_rp.test.cc', with_tag('gem5 simobject'))
 GTest('mru_rp.test', 'mru_rp.cc', 'mru_rp.test.cc', with_tag('gem5 simobject'))
 GTest('second_chance_rp.test', 'fifo_rp.cc', 'second_chance_rp.cc',
     'second_chance_rp.test.cc', with_tag('gem5 simobject'))
+GTest('lru9_slow_rp.test', 'lru9_slow_rp.cc',
+    'lru9_slow_rp.test.cc', with_tag('gem5 simobject'))

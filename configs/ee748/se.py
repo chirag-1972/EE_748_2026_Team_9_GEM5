@@ -107,7 +107,9 @@ parser.add_argument("--l2-assoc", type=int, default=8)
 parser.add_argument("--l2-tag-latency", type=int, default=10)
 parser.add_argument("--l2-data-latency", type=int, default=10)
 parser.add_argument("--l2-response-latency", type=int, default=1)
-parser.add_argument("--llc-policy", choices=["lru", "lru9"], default="lru")
+parser.add_argument(
+    "--llc-policy", choices=["lru", "lru9", "lru9_slow"], default="lru"
+)
 parser.add_argument("--stdin-file", help="File supplied to benchmark stdin")
 parser.add_argument(
     "--library-path", help="Library path for the simulated binary"

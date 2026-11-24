@@ -28,7 +28,9 @@ parser.add_argument(
 )
 parser.add_argument("--warmup-insts", type=int, default=200_000_000)
 parser.add_argument("--detailed-insts", type=int, default=50_000_000)
-parser.add_argument("--llc-policy", choices=["lru", "lru9"], default="lru")
+parser.add_argument(
+    "--llc-policy", choices=["lru", "lru9", "lru9_slow"], default="lru"
+)
 parser.add_argument("--dry-run", action="store_true")
 args = parser.parse_args()
 if args.mode == "kvm" and not args.dry_run:

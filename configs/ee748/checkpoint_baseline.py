@@ -157,7 +157,9 @@ def main() -> int:
         type=Path,
         default=WORKSPACE / "gem5_out/baseline_checkpointed",
     )
-    parser.add_argument("--llc-policy", choices=["lru", "lru9"], default="lru")
+    parser.add_argument(
+        "--llc-policy", choices=["lru", "lru9", "lru9_slow"], default="lru"
+    )
     args = parser.parse_args()
     name = args.workload
     target = SPECS[name][2]

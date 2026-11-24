@@ -85,6 +85,12 @@ class LRU9RP(BaseReplacementPolicy):
     cxx_header = "mem/cache/replacement_policies/lru9_rp.hh"
 
 
+class LRU9_Slow_RP(BaseReplacementPolicy):
+    type = "LRU9_Slow_RP"
+    cxx_class = "gem5::replacement_policy::LRU9_Slow"
+    cxx_header = "mem/cache/replacement_policies/lru9_slow_rp.hh"
+
+
 class BIPRP(LRURP):
     type = "BIPRP"
     cxx_class = "gem5::replacement_policy::BIP"

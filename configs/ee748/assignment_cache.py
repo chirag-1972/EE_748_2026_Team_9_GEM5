@@ -8,6 +8,7 @@ from m5.objects import (
     BranchPredictor,
     IQUnit,
     L2XBar,
+    LRU9_Slow_RP,
     ReturnAddrStack,
     SimpleBTB,
 )
@@ -56,7 +57,7 @@ class AssignmentCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
 
     def __init__(self, *args, llc_policy="lru", **kwargs):
         super().__init__(*args, **kwargs)
-        if llc_policy not in {"lru", "lru9"}:
+        if llc_policy not in {"lru", "lru9", "lru9_slow"}:
             raise ValueError(f"Unsupported LLC policy: {llc_policy}")
         self._llc_policy = llc_policy
 
@@ -76,9 +77,14 @@ class AssignmentCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
                 mshrs=64,
             ),
         )
-        llc.cache.replacement_policy = (
-            LRU9RP() if self._llc_policy == "lru9" else LRURP()
-        )
+        if self._llc_policy == "lru9":
+            replacement_policy = LRU9RP()
+        elif self._llc_policy == "lru9_slow":
+            replacement_policy = LRU9_Slow_RP()
+        else:
+            replacement_policy = LRURP()
+
+        llc.cache.replacement_policy = replacement_policy
         llc.cache.mem_side = self.membus.cpu_side_ports
         self.l3buses = [L2XBar()]
         self.l3buses[0].mem_side_ports = llc.cache.cpu_side

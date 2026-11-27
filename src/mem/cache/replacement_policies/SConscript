@@ -26,9 +26,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from gem5.site_scons.gem5_scons.sources import with_tag
-
-
 Import('*')
 
 SimObject('ReplacementPolicies.py', sim_objects=[
@@ -62,5 +59,3 @@ GTest('lru_rp.test', 'lru_rp.cc', 'lru_rp.test.cc', with_tag('gem5 simobject'))
 GTest('mru_rp.test', 'mru_rp.cc', 'mru_rp.test.cc', with_tag('gem5 simobject'))
 GTest('second_chance_rp.test', 'fifo_rp.cc', 'second_chance_rp.cc',
     'second_chance_rp.test.cc', with_tag('gem5 simobject'))
-GTest('lru9_slow_rp.test', 'lru9_slow_rp.cc',
-    'lru9_slow_rp.test.cc', with_tag('gem5 simobject'))

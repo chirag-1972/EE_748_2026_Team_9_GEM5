@@ -28,8 +28,22 @@ void
 LRU9_Slow::invalidate(const std::shared_ptr<ReplacementData> &replacement_data)
 {
     assert(replacement_data);
+
     auto entry =
         std::static_pointer_cast<LRU9_Slow_ReplData>(replacement_data);
+
+    if (entry->valid) {
+        const uint8_t old_rank = entry->rank;
+
+        for (auto candidate : setEntries[entry->set]) {
+            if (candidate != entry.get() && candidate->valid &&
+                candidate->rank > old_rank) {
+
+                --candidate->rank;
+            }
+        }
+    }
+
     entry->valid = false;
     entry->rank = 15;
 }
@@ -77,6 +91,7 @@ LRU9_Slow::touch(
 void
 LRU9_Slow::insert(LRU9_Slow_ReplData *entry) const
 {
+    assert(!entry->valid);
     registerEntry(entry);
     auto &entries = setEntries[entry->set];
     const uint8_t valid_count =
